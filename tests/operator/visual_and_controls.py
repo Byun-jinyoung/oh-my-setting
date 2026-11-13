@@ -2365,6 +2365,12 @@ with patch.dict(os.environ, {"OMS_CODEX_NOTIFY": "0", "OMS_CLAUDE_NOTIFY": "0"},
     assert "OMS_PANEL_MAIN_PERMISSIONS=native" in panel.panel_environment()
     # The bell opt-in reaches automatically opened boards only when the launching environment sets it.
     assert not any(entry.startswith("OMS_PANEL_ATTENTION_BELL=") for entry in panel.panel_environment())
+# A main opened by an already-running tmux server must still carry the herdr-core terminal identity,
+# or herdr-app cannot attribute its state and `hc run` sub-agents lose their parent.
+with patch.dict(os.environ, {"HC_TERMINAL_ID": "t36", "HC_TERMINAL_SOCKET": "/run/hc.sock", "HC_SCOPE": "scope"}, clear=True):
+    assert {"HC_TERMINAL_ID=t36", "HC_TERMINAL_SOCKET=/run/hc.sock", "HC_SCOPE=scope"} <= set(panel.panel_environment())
+with patch.dict(os.environ, {}, clear=True):
+    assert not any(entry.startswith("HC_") for entry in panel.panel_environment())
 with patch.dict(os.environ, {"OMS_PANEL_ATTENTION_BELL": "1", "OMS_PANEL_ATTENTION_CMD": "notify --json"}, clear=True):
     assert "OMS_PANEL_ATTENTION_BELL=1" in panel.panel_environment()
     assert "OMS_PANEL_ATTENTION_CMD=notify --json" in panel.panel_environment()

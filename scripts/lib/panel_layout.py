@@ -154,7 +154,11 @@ def panel_environment():
                        "OMS_CODEX_NOTIFY", "OMS_CLAUDE_NOTIFY", "OMS_PANEL_MAIN_PERMISSIONS",
                        "CLAUDE_CONFIG_DIR", "OMS_QUOTA_WARN_PCT",
                        "OMS_ROOM_ID", "OMS_ROOM_REPO", "OMS_PANEL_HOST", "OMS_PANEL_VIEW",
-                       "OMS_PANEL_THEME", "COLORFGBG", EXECUTION_ENV) if name in os.environ]
+                       "OMS_PANEL_THEME", "COLORFGBG", EXECUTION_ENV,
+                       # A running tmux server hands its own (possibly absent or stale) environment to new
+                       # windows; without these the main neither reports to its herdr-core terminal nor
+                       # becomes the parent of the sub-agents it starts with `hc run`.
+                       "HC_TERMINAL_ID", "HC_TERMINAL_SOCKET", "HC_SCOPE") if name in os.environ]
 
 
 def board_view(view):
