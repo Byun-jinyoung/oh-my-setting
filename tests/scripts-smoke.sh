@@ -19901,6 +19901,24 @@ EOF
     fi
   done
   assert_file_contains "$home_dir/out" "duplicate skill name: duplicate-skill"
+
+  # Colon-namespaced names (such as gsd:resume-work vs gsd:do) stay distinct,
+  # and trailing 'r' (such as herdr) is preserved.
+  home_dir="$TMP/skill-doctor-colon"
+  mkdir -p "$home_dir/.agents/skills/gsd-resume-work" "$home_dir/.agents/skills/gsd-do" "$home_dir/.agents/skills/herdr"
+  printf -- '---\nname: gsd:resume-work\n---\n' > "$home_dir/.agents/skills/gsd-resume-work/SKILL.md"
+  printf -- '---\nname: gsd:do\n---\n' > "$home_dir/.agents/skills/gsd-do/SKILL.md"
+  printf -- '---\nname: herdr\n---\n' > "$home_dir/.agents/skills/herdr/SKILL.md"
+  PATH="/usr/bin:/bin" HOME="$home_dir" "$ROOT/scripts/skill-doctor.sh" >"$home_dir/ok" 2>&1 ||
+    fail "colon-namespaced skills should remain distinct: $(cat "$home_dir/ok")"
+  assert_file_contains "$home_dir/ok" "skill-doctor: ok"
+
+  mkdir -p "$home_dir/.agents/skills/gsd-do-dup"
+  printf -- '---\nname: gsd:do\n---\n' > "$home_dir/.agents/skills/gsd-do-dup/SKILL.md"
+  if PATH="/usr/bin:/bin" HOME="$home_dir" "$ROOT/scripts/skill-doctor.sh" >"$home_dir/dup" 2>&1; then
+    fail "skill-doctor should fail on duplicate colon-namespaced names"
+  fi
+  assert_file_contains "$home_dir/dup" "duplicate skill name: gsd:do"
 }
 
 # smoke-weight: 40

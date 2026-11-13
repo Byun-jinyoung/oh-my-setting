@@ -257,11 +257,17 @@ oms_ops_cleanup_legacy_links() {
 
 oms_ops_extract_skill_name() {
   local file="$1"
-  awk -F: '
+  awk '
     /^name:[[:space:]]*/ {
-      sub(/^[[:space:]]+/, "", $2)
-      sub(/[[:space:]]+$/, "", $2)
-      print $2
+      sub(/^name:[[:space:]]*/, "")
+      sub(/\r$/, "")
+      sub(/[[:space:]]+$/, "")
+      if (length($0) >= 2 &&
+          ((substr($0, 1, 1) == "\"" && substr($0, length($0), 1) == "\"") ||
+           (substr($0, 1, 1) == "\047" && substr($0, length($0), 1) == "\047"))) {
+        $0 = substr($0, 2, length($0) - 2)
+      }
+      print
       exit
     }
   ' "$file"
