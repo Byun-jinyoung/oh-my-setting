@@ -1942,6 +1942,36 @@ server = json.load(open(os.path.join(os.environ["OMS_T_DIR"], "mcp_config.json")
 assert server["command"] == os.environ["OMS_T_CMD"], server
 PY
 
+  # Pre-f33d0f52 (#!/usr/bin/env bash + up=../..) versioned launchers are
+  # also rewritten in place while bin/python3 and current remain untouched.
+  {
+    printf '#!/usr/bin/env bash\nversion=%s\nup=../..\n' "$locked_version"
+    cat <<'EOF_LEGACY_VER'
+set -euo pipefail
+# Every managed python3 call runs this: no dirname process per interpreter start.
+case "${BASH_SOURCE[0]}" in */*) here="${BASH_SOURCE[0]%/*}" ;; *) here=. ;; esac
+root="$(cd "$here/$up" && pwd -P)"
+unset PYTHONHOME
+for candidate in "$root/envs/$version/bin/python3" \
+    "$root/envs/$version/bin/python" "$root/envs/$version/Scripts/python.exe"; do
+  if [ -x "$candidate" ]; then exec "$candidate" "$@"; fi
+done
+echo "error: OMS Python runtime is incomplete: $root/envs/$version" >&2
+exit 1
+EOF_LEGACY_VER
+  } > "$TMP/legacy-ver-launcher"
+  chmod +x "$TMP/legacy-ver-launcher"
+  cp "$TMP/legacy-ver-launcher" "$versioned_launcher"
+  cp "$TMP/legacy-ver-launcher" "${versioned_launcher%3}"
+  PATH="$bin:/usr/bin:/bin" HOME="$TMP/agy-home" OMS_AGY_BIN="$bin/agy" \
+    OMS_PYTHON_RUNTIME_ROOT="$TMP/agy-runtime" OMS_CAPABILITY_DIR="$TMP/agy-caps-default" \
+    bash "$ROOT/scripts/install-agy-plugin.sh" > "$TMP/agy-legacy-ver.out" 2>&1 ||
+    fail "pre-f33d0f52 versioned launcher was not refreshed: $(cat "$TMP/agy-legacy-ver.out")"
+  cmp -s "$TMP/good-launcher" "$versioned_launcher" && cmp -s "$TMP/good-launcher" "${versioned_launcher%3}" ||
+    fail "pre-f33d0f52 versioned launchers were not rewritten"
+  cmp -s "$TMP/stable-before" "$TMP/agy-runtime/bin/python3" && cmp -s "$TMP/current-before" "$TMP/agy-runtime/current" ||
+    fail "pre-f33d0f52 launcher refresh touched bin/python3 or current"
+
   # Both POSIX spellings (bin/python when bin/python3 is absent) and supported
   # managed symlink candidates inside envs/V/bin retain behavior.
   mv "$TMP/agy-runtime/envs/$locked_version/bin/python3" "$TMP/agy-runtime/envs/$locked_version/bin/python"
@@ -2079,6 +2109,30 @@ PY
     fail "no-versioned direct B with matching stable B should succeed"
   cmp -s "$TMP/good-stable" "$lifecycle_rt/bin/python3" || fail "retired stable launcher was not rewritten"
   [ ! -e "$lifecycle_rt/launchers" ] || fail "retired stable refresh created versioned launchers"
+  # A pre-f33d0f52 (#!/usr/bin/env bash + up=..) stable launcher is rewritten too.
+  cat > "$lifecycle_rt/bin/python3" <<'EOF_LEGACY_STABLE'
+#!/usr/bin/env bash
+version=3.12.8
+up=..
+set -euo pipefail
+# Every managed python3 call runs this: no dirname process per interpreter start.
+case "${BASH_SOURCE[0]}" in */*) here="${BASH_SOURCE[0]%/*}" ;; *) here=. ;; esac
+root="$(cd "$here/$up" && pwd -P)"
+unset PYTHONHOME
+for candidate in "$root/envs/$version/bin/python3" \
+    "$root/envs/$version/bin/python" "$root/envs/$version/Scripts/python.exe"; do
+  if [ -x "$candidate" ]; then exec "$candidate" "$@"; fi
+done
+echo "error: OMS Python runtime is incomplete: $root/envs/$version" >&2
+exit 1
+EOF_LEGACY_STABLE
+  chmod 0755 "$lifecycle_rt/bin/python3"
+  PATH="$bin:/usr/bin:/bin" HOME="$TMP/agy-home" OMS_AGY_BIN="$bin/agy" \
+    OMS_PYTHON_RUNTIME_ROOT="$lifecycle_rt" OMS_CAPABILITY_DIR="$TMP/agy-caps-default" \
+    bash "$ROOT/scripts/install-agy-plugin.sh" >/dev/null ||
+    fail "no-versioned direct B with pre-f33d0f52 stable B should succeed"
+  cmp -s "$TMP/good-stable" "$lifecycle_rt/bin/python3" || fail "pre-f33d0f52 stable launcher was not rewritten"
+  [ ! -e "$lifecycle_rt/launchers" ] || fail "pre-f33d0f52 stable refresh created versioned launchers"
   OMS_T_CFG="$capture/mcp_config.json" OMS_T_RT="$lifecycle_phys" python3 - <<'PY' || fail "direct B stable fallback failed"
 import json, os, subprocess
 cmd = json.load(open(os.environ["OMS_T_CFG"]))["mcpServers"]["oh-my-setting"]["command"]

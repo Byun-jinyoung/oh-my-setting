@@ -588,25 +588,55 @@ agy_is_retired_launcher() {  # RETIRED_FILE CANDIDATE; never opens a FIFO or dev
   [ ! -L "$2" ] && [ -f "$2" ] && cmp -s "$1" "$2"
 }
 
-agy_rewrite_retired_launchers() {  # RUNTIME VERSION RETIRED_FILE
-  local spec name dir
+agy_write_legacy_up_launcher() {  # VERSION UP OUT_FILE
+  local version="$1" up="$2" out="$3"
+  {
+    printf '#!/usr/bin/env bash\nversion=%s\nup=%s\n' "$version" "$up"
+    cat <<'EOF_LEGACY_LAUNCHER'
+set -euo pipefail
+# Every managed python3 call runs this: no dirname process per interpreter start.
+case "${BASH_SOURCE[0]}" in */*) here="${BASH_SOURCE[0]%/*}" ;; *) here=. ;; esac
+root="$(cd "$here/$up" && pwd -P)"
+unset PYTHONHOME
+for candidate in "$root/envs/$version/bin/python3" \
+    "$root/envs/$version/bin/python" "$root/envs/$version/Scripts/python.exe"; do
+  if [ -x "$candidate" ]; then exec "$candidate" "$@"; fi
+done
+echo "error: OMS Python runtime is incomplete: $root/envs/$version" >&2
+exit 1
+EOF_LEGACY_LAUNCHER
+  } > "$out"
+}
+
+agy_rewrite_retired_launchers() {  # RUNTIME VERSION RETIRED_FILE LEGACY_VER_FILE LEGACY_BIN_FILE
+  local spec name dir ref_legacy
   for spec in "python3 launchers/$2" "python launchers/$2" "python3 bin"; do
     name="${spec%% *}" dir="${spec#* }"
-    agy_is_retired_launcher "$3" "$1/$dir/$name" || continue
+    if [ "$dir" = "bin" ]; then ref_legacy="$5"; else ref_legacy="$4"; fi
+    agy_is_retired_launcher "$3" "$1/$dir/$name" ||
+      agy_is_retired_launcher "$ref_legacy" "$1/$dir/$name" || continue
     oms_python_runtime_write_launcher "$1" "$2" "$name" "$dir" || return 1
   done
 }
 
 agy_refresh_retired_launchers() {
-  local runtime_phys="$1" version="$2" expected_file="$3" retired="$4/retired-launcher"
+  local runtime_phys="$1" version="$2" expected_file="$3"
+  local retired="$4/retired-launcher" legacy_ver="$4/legacy-ver-launcher" legacy_bin="$4/legacy-bin-launcher"
   sed 's#^    "$root/envs/$version/bin/python"; do$#    "$root/envs/$version/bin/python" "$root/envs/$version/Scripts/python.exe"; do#' \
     "$expected_file" > "$retired" || return 1
-  ! cmp -s "$expected_file" "$retired" || return 1
+  agy_write_legacy_up_launcher "$version" "../.." "$legacy_ver" || return 1
+  agy_write_legacy_up_launcher "$version" ".." "$legacy_bin" || return 1
+  ! cmp -s "$expected_file" "$retired" &&
+    ! cmp -s "$expected_file" "$legacy_ver" &&
+    ! cmp -s "$expected_file" "$legacy_bin" || return 1
   agy_is_retired_launcher "$retired" "$runtime_phys/launchers/$version/python3" ||
     agy_is_retired_launcher "$retired" "$runtime_phys/launchers/$version/python" ||
-    agy_is_retired_launcher "$retired" "$runtime_phys/bin/python3" || return 0
+    agy_is_retired_launcher "$retired" "$runtime_phys/bin/python3" ||
+    agy_is_retired_launcher "$legacy_ver" "$runtime_phys/launchers/$version/python3" ||
+    agy_is_retired_launcher "$legacy_ver" "$runtime_phys/launchers/$version/python" ||
+    agy_is_retired_launcher "$legacy_bin" "$runtime_phys/bin/python3" || return 0
   OMS_PYTHON_RUNTIME_ROOT="$runtime_phys" oms_with_file_lock "$runtime_phys/current" \
-    agy_rewrite_retired_launchers "$runtime_phys" "$version" "$retired"
+    agy_rewrite_retired_launchers "$runtime_phys" "$version" "$retired" "$legacy_ver" "$legacy_bin"
 }
 
 agy_select_managed_launcher() {
