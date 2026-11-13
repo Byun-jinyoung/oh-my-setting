@@ -47,7 +47,7 @@ finishes. Output excerpts are capped at 8 KiB. Calls without an OMS capture show
 
 ## Quick start
 
-1. Run `oms` in a terminal and choose Claude, Codex or Agy. Enter or EOF opens control only; Ctrl-C exits with 130. Missing CLIs show their reasons. The panel starts at most one live main. Pi remains an explicit alternative (`OMS_PANEL_MAIN=pi` or the Pi start key).
+1. Run `oms` in a terminal and choose Claude, Codex, Agy or OmO. Enter or EOF opens control only; Ctrl-C exits with 130. Missing CLIs show their reasons. The panel starts at most one live main. Pi remains an explicit alternative (`OMS_PANEL_MAIN=pi` or the Pi start key).
 2. The main window keeps the board on the left whenever the window is wide enough (above the CLI only when it is too narrow); the right side is the reader for workers, advisors, reviews and results, alongside the native conversation. At wide widths it shows the graph; narrower layouts fall back to the tree. At fewer than 20 columns the board omits its tab box.
 3. The compact goal banner and Plan tab show a bounded goal preview (up to 200 characters and, in Plan, two wrapped lines); `oms agent-plan list` prints the full plan. The bottom box contains Log, Detail, Plan, Messages, Past and Attention tabs (Past and Attention stay even when empty), plus Debate while a debate exists. The pinned **Needs you** attention strip stays above activity when the inbox has items.
 4. The control window's **Needs you** inbox lists failed or timed-out calls, calls or mains waiting for approval or input, unanswered broadcasts and patches awaiting admission. Select with arrows or a click; Enter opens the selected chat or result.
@@ -58,6 +58,7 @@ finishes. Output excerpts are capped at 8 KiB. Calls without an OMS capture show
 oms                                      # open the control panel
 oms panel --repo . --launch codex         # start a Codex main
 oms panel --repo . --launch agy           # start a fresh Agy main
+oms panel --repo . --launch omo           # start a fresh OmO main
 oms panel --repo . --results              # read retained results
 ```
 
@@ -352,8 +353,8 @@ handoff leaves the checkout untouched.
 
 ### Start a main in an existing panel
 
-The board offers `[+ Claude main]`, `[+ Pi main]` and `[+ Codex main]` for installed harnesses
-when no main is active. A click, or `n` then `1` (Claude), `2` (Pi) or `0` (Codex), starts the
+The board offers `[+ Claude main]`, `[+ Pi main]`, `[+ Codex main]` and `[+ OmO main]` for installed harnesses
+when no main is active. A click, or `n` then `1` (Claude), `2` (Pi), `0` (Codex) or `5` (OmO), starts the
 sole main without leaving the current window. While a main is active or its lifecycle is
 unverified, the row explains the limit and offers no start targets. Startup is serialized;
 an invocation-scoped lease also prevents concurrent inline/Herdr/native main processes.
@@ -443,6 +444,15 @@ native launch without executing the CLI, and dry runs show the actual fresh-laun
 Agy `--resume` is refused before launch or enrollment: its native session ownership
 cannot yet be verified. Restarting an exited Agy main starts fresh; no conversation ID
 or history binding is invented. Native histories remain separate.
+Fresh OmO mains run `omo` with the Pi OMS extension (room mail and activity under the
+Claude hook identity) and pass the OMS contract through `--append-system-prompt`; the
+task follows as JSON data. The owner is `claude` and the harness `omo`. OmO keeps its own
+provider and model settings, recorded as `provider-default` and shown as OmO on the board;
+only an explicit `--model` adds a model flag. By default the main gets
+`--permission-preset full-access`. OmO `--resume` is refused like Agy's, restarts start
+fresh, swap targets stay Claude/Pi/Codex, and the board shows no native context reading.
+OMS main windows enable tmux `allow-passthrough` so OmO's Herdr agent-state OSC reaches
+the outer terminal.
 The available Pi launch uses the existing `oms harness pi`
 bridge and requires Pi 0.80.4 or newer (the bridge waits for `agent_settled`)
 and Codex CLI on PATH. Pi owns its tools and UI. Pi history is separate: this integration refuses
@@ -673,8 +683,8 @@ checkout on the session.
 
 #### Default main selection
 
-A new or empty panel offers Claude, Codex and Agy, with missing-CLI reasons. The
-startup prompt accepts `1`/`claude`, `2`/`codex` and `3`/`agy`; Enter or EOF selects
+A new or empty panel offers Claude, Codex, Agy and OmO, with missing-CLI reasons. The
+startup prompt accepts `1`/`claude`, `2`/`codex`, `3`/`agy` and `4`/`omo`; Enter or EOF selects
 no main and leaves usable control. Ctrl-C exits with 130. These prompt numbers are
 separate from the existing control shortcuts (`1` Claude, `2` Pi, `0` Codex).
 Choosing control only does not allocate or bind a room to a roomless panel.
@@ -683,7 +693,7 @@ Use `o Rooms` to select or create a room first, or `p` Providers then Native.
 Waiting for another poll does not select a room; a failed room query is reported
 separately from an intentionally unset room.
 An explicit `--launch` wins, followed by a set `OMS_PANEL_MAIN` (`claude`, `codex`,
-`agy` or `pi`), then the picker. Empty or whitespace-only `OMS_PANEL_MAIN` opens no
+`agy`, `omo` or `pi`), then the picker. Empty or whitespace-only `OMS_PANEL_MAIN` opens no
 main; an invalid value opens none with a warning. `OMS_PANEL_HARNESS` selects only
 the control menu's harness and grants no startup launch authority. Inline and Herdr
 use the same choice; selecting none opens their control menu. No preference is saved.
@@ -1143,6 +1153,7 @@ The launcher does not autonomously fan out before the main has a task.
 | Claude main | `claude-opus-5-5` | high |
 | Codex main / gateway-backed Pi | `gpt-6.1-sol` (shown as Sol 6.1) | high |
 | Agy main | Native settings unless `--model` is supplied | Native settings |
+| OmO main | Native settings unless `--model` is supplied | Native settings |
 
 Set `OMS_PANEL_PUBLIC_ROUTE_OPT_IN=1` for a dispatch to allow public-only routes in a
 private or unverified repository; otherwise these routes require a GitHub origin

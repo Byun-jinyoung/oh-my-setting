@@ -495,7 +495,9 @@ def collect(report, main_attempt=None, now=None, repo=None, _tick=None):
     from panel_cache import shared_board
     from room_view import nodes
     room = mapping(report.get("room"))
-    mains = [m for m in nodes(shared_board(_tick, report)) if m.get("role") == "main" and m.get("harness") != "pi"]
+    # Pi and OmO keep no Codex/Claude Code transcript, so their owner's native readings would misattribute.
+    mains = [m for m in nodes(shared_board(_tick, report)) if m.get("role") == "main"
+             and m.get("harness") not in ("pi", "omo")]
     panes = windows(repo, room["id"], room, _tick=_tick) if repo is not None and room.get("id") else {}
     now = time.time() if now is None else now
     current = current_models(repo, mains)

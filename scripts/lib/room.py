@@ -483,7 +483,7 @@ def validate_main_swap(repo, state, event, old, released=True):
     member = participant(state, event["participant"])
     if member["role"] != "main" or member.get("parent"):
         raise ValueError("swap needs the current main")
-    if (event["harness"] not in ("claude", "codex", "pi", "agy")
+    if (event["harness"] not in ("claude", "codex", "pi", "agy", "omo")
             or not main_owner_matches(event["harness"], event["provider"])
             or not isinstance(event["model"], str)
             or not re.fullmatch(r"[A-Za-z0-9_./:][A-Za-z0-9_./:-]{0,159}", event["model"])):

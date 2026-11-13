@@ -261,14 +261,14 @@ def spawn_bar(width, navigation):
     if not navigation.get("spawn_managed"):
         return "Start a main: needs the tmux panel (oms panel)", []
     if navigation.get("spawn_armed"):
-        keys = [("claude", "1 Claude"), ("pi", "2 Pi"), ("codex", "0 Codex")]
+        keys = [("claude", "1 Claude"), ("pi", "2 Pi"), ("codex", "0 Codex"), ("omo", "5 OmO")]
         return "Start one main: " + "  ".join(label for name, label in keys if name in installed) + "  Esc cancel", []
     if navigation.get("spawn_busy"):
         return "Starting a main...", []
     if not installed:
-        return "No Claude, Pi or Codex main harness is installed", []
+        return "No Claude, Pi, Codex or OmO main harness is installed", []
     for suffix in (" main", ""):
-        labels = ["[+ %s%s]" % (name.capitalize(), suffix) for name in installed]
+        labels = ["[+ %s%s]" % ("OmO" if name == "omo" else name.capitalize(), suffix) for name in installed]
         if len("  ".join(labels)) <= width:
             break
     x, spots = 0, []
@@ -279,9 +279,17 @@ def spawn_bar(width, navigation):
     return "  ".join(labels), spots
 
 
+def display_model(member):
+    """OmO runs its own model settings, recorded only as provider-default; the board names the harness instead."""
+    model = member.get("model")
+    return "OmO" if member.get("harness") == "omo" and model == "provider-default" else model
+
+
 def model_name(member):
+    if display_model(member) == "OmO":
+        return "OmO"
     name = MODEL_NAMES.get(member.get("model"), member.get("model")) or member.get("provider", "unknown")
-    return "Pi / " + name if member.get("harness") == "pi" else name
+    return {"pi": "Pi / ", "omo": "OmO / "}.get(member.get("harness"), "") + name
 
 
 def open_count(room, participant):
@@ -794,7 +802,7 @@ def member_identity(member, label=True):
     title = member.get("title") if label else None
     if title in {"Native task not recorded", "Task unrecorded"}:
         title = None
-    return call_identity(role, member.get("model"), title, member.get("_short_id"), member.get("alias"))
+    return call_identity(role, display_model(member), title, member.get("_short_id"), member.get("alias"))
 
 
 

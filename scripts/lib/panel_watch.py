@@ -67,7 +67,7 @@ def mark_window(attention, asked=False):
                                 capture_output=True, text=True, check=False, timeout=2, stdin=subprocess.DEVNULL)
         name = result.stdout.replace("\r", "").rstrip("\n") if result.returncode == 0 else ""
         base = name[2:] if name[:2] in ("! ", "? ") else name
-        if base not in MAIN_OWNERS + ("agy",) or name == mark + base:
+        if base not in MAIN_OWNERS + ("agy", "omo") or name == mark + base:
             return
         subprocess.run(tmux_command("rename-window", "-t", pane, mark + base),
                        capture_output=True, check=False, timeout=2, stdin=subprocess.DEVNULL)
@@ -647,7 +647,8 @@ def watch(repo, provider, count=0, no_animation=False, view=None, attention_only
     published = None
     titled = None
     spawns = []
-    installed = [name for name in MAIN_HARNESSES if main_installed(name)]
+    # OmO is a start target only; swap keeps the MAIN_HARNESSES shortcuts.
+    installed = [name for name in (*MAIN_HARNESSES, "omo") if main_installed(name)]
 
     def expand(enabled):
         from terminal_panel import managed_session, native_repository, tmux_command, window_zoomed
@@ -963,8 +964,8 @@ def watch(repo, provider, count=0, no_animation=False, view=None, attention_only
                         if event[0] == "click" and not resized:
                             spawn = next((h["action"][1] for h in navigation.get("hits", []) if h["action"][0] == "spawn"
                                           and h["y"] == event[2] and h["x1"] <= event[1] <= h["x2"]), None)
-                        elif armed and event[0] in {"1", "2", "0"}:
-                            spawn = {"1": "claude", "2": "pi", "0": "codex"}[event[0]]
+                        elif armed and event[0] in {"1", "2", "0", "5"}:
+                            spawn = {"1": "claude", "2": "pi", "0": "codex", "5": "omo"}[event[0]]
                         if event[0] == "s" and managed_session():
                             if not navigation.get("main_occupied"):
                                 navigation["notice"] = "No main to swap"

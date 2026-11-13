@@ -2379,7 +2379,7 @@ for invalid in ("claude,pi", "unknown"):
             patch.object(panel.sys, "stderr", new_callable=io.StringIO) as warnings:
         assert panel.panel_mains() == []
         assert warnings.getvalue().splitlines() == [
-            "Warning: OMS_PANEL_MAIN accepts one of claude, pi, codex, agy (or empty to open no main); no main opened."]
+            "Warning: OMS_PANEL_MAIN accepts one of claude, pi, codex, agy, omo (or empty to open no main); no main opened."]
 for configured, available, expected in ((None, {"claude", "pi", "codex", "agy"}, []),
                                       (None, {"pi", "codex"}, []),
                                       (None, {"pi"}, []),
@@ -6755,7 +6755,7 @@ for kind, managed, tabs, tab, extra in itertools.product(
             for member in (None, {"location": "worktree:a/b", "state": "working", "parent": "m"}):
                 for glyphs in (True, False):
                     shown_hints.update(footer_hints(help_nav, 400, managed, glyphs, member, graph))
-shown_text = "\n".join(shown_hints) + "\n" + "\n".join(panel.keys_help(("claude", "pi", "codex")))  # F12's tmux list
+shown_text = "\n".join(shown_hints) + "\n" + "\n".join(panel.keys_help(("claude", "pi", "codex", "omo")))  # F12's tmux list
 for key, label, contexts, name in panel_layout.PANEL_KEYS:
     if "board" in contexts and label and key not in {"wheel"}:
         assert panel_layout.panel_hint(name) in shown_text or panel_layout.panel_hint(name, False) in shown_text, name

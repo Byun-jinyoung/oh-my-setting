@@ -948,7 +948,7 @@ def context_header_text(state, main_attempt, repo):
                    main_attempt in (m.get("participant"), m.get("attempt"))), None)
     task = _header_safe(member.get("task_id")) if member and member.get("task_id") else "task unrecorded"
     model = _header_safe(model_name(member)) if member else "unknown"
-    provider = _header_safe({"claude": "Claude Code", "codex": "Codex", "pi": "Pi"}.get(
+    provider = _header_safe({"claude": "Claude Code", "codex": "Codex", "pi": "Pi", "omo": "OmO"}.get(
         member.get("harness") or member.get("provider"), member.get("provider"))) if member else "unknown"
     status = _header_safe(status_tag(member.get("state") or "unknown")) if member else _header_safe(status_tag("unknown"))
     context = ""

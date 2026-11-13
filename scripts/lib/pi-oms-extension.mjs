@@ -22,7 +22,8 @@ function hook(command, payload) {
       delete env.OMS_HOOK_PAYLOAD;
       // Pi panel enrollment belongs to Codex; Claude-shaped fields alone default
       // to Claude in hook_state and would withhold this main's room mail.
-      env.OMS_HOOK_AGENT = "codex";
+      // OmO reuses this extension under a Claude owner (OMS_PANEL_OWNER=claude).
+      env.OMS_HOOK_AGENT = process.env.OMS_PANEL_OWNER === "claude" ? "claude" : "codex";
       child = spawn("python3", [helper, command], {
         env, stdio: ["pipe", "pipe", "ignore"], windowsHide: true,
       });

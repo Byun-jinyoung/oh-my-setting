@@ -21,8 +21,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ENTRY = ROOT / "scripts" / "oms"
 PROVIDERS = ("codex", "claude")
 MAIN_HARNESSES = ("claude", "pi", "codex")
-# Fresh Agy launch has no verified swap/history binding; retain the existing shortcut targets.
-_LAUNCH_HARNESSES = (*MAIN_HARNESSES, "agy")
+# Fresh Agy and OmO launches have no verified swap/history binding; retain the existing shortcut targets.
+_LAUNCH_HARNESSES = (*MAIN_HARNESSES, "agy", "omo")
 MAX_PROMPT = 65536
 SESSION_ID = r"[A-Za-z0-9][A-Za-z0-9_-]{0,159}"
 OUTBOUND_SCANNER = ROOT / "scripts" / "lib" / "peer-common.sh"
@@ -41,7 +41,7 @@ from panel_dispatch import (
     _rollback_dispatch_enrollment, run_dispatch, _print_dispatch_next_ready, council_command, council,
     peer_command, run, dashboard)
 from panel_native import (
-    NativeShutdown, native_adapter, native_binary, main_owner, resolve_main, caller_owner, main_installed,
+    NativeShutdown, FRESH_ONLY, native_adapter, native_binary, main_owner, resolve_main, caller_owner, main_installed,
     main_missing, bootstrap, native_command, safe_label, _main_window, _main_exit_key, _main_terminal_owner,
     launch_failed_without_child, run_native, _native_resume_binding, run_single_native, main_history, _run_native,
     launch_command, legacy_session, panel_mains, add_main_window, MAX_LIVE_MAINS, live_mains, live_main_refusal,
@@ -620,8 +620,8 @@ def main(argv=None):
             native_binary(args.launch)
         if args.launch == "pi" and args.resume:
             raise ValueError("Pi resume needs a verified Pi session binding; start a new Pi main")
-        if args.launch == "agy" and args.resume:
-            raise ValueError("Agy resume needs a verified native session binding; start a fresh Agy main")
+        if args.launch in FRESH_ONLY and args.resume:
+            raise ValueError(FRESH_ONLY[args.launch])
         if args.spawn_main:
             if args.spawn_main not in _LAUNCH_HARNESSES:
                 args.spawn_main = provider_catalog(args.spawn_main)[0]["provider"]

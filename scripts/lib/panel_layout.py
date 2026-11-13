@@ -68,6 +68,7 @@ PANEL_KEYS = (
     ('1', 'Claude', ('board',), '1_claude'),
     ('2', 'Pi', ('board',), '2_pi'),
     ('0', 'Codex', ('board',), '0_codex'),
+    ('5', 'OmO', ('board',), '5_omo'),
     ('vertical', 'Move', ('board',), 'move'),
     ('vertical', 'Message', ('board',), 'message'),
     ('vertical', 'Seat', ('board',), 'seat'),
@@ -751,13 +752,18 @@ def bind_window(pane, launch, view, attention_only, model=None):
     for key, value in (("owner", main_owner(launch, model)), ("harness", launch), ("view", board_view(view)), ("room", os.environ["OMS_ROOM_ID"]),
                        ("attention", "1" if attention_only else "0")):
         subprocess.run(tmux_command("set-option", "-w", "-t", pane, "@oms_panel_" + key, value), check=True)
+    # A main's agent-state OSC (e.g. OmO's Herdr report) reaches the outer terminal only through
+    # tmux passthrough; an older tmux without the option keeps the window usable.
+    subprocess.run(tmux_command("set-option", "-w", "-t", pane, "allow-passthrough", "on"),
+                   check=False, capture_output=True)
 
 
 # F9 switches panes; F8 cycles layout modes from any pane in a panel window.
 def keys_help(installed=None):
     from terminal_panel import main_installed
-    installed = set(name for name in ("claude", "pi", "codex") if main_installed(name)) if installed is None else set(installed)
-    starts = [panel_hint(label) for name, label in (("claude", "1_claude"), ("pi", "2_pi"), ("codex", "0_codex"))
+    installed = set(name for name in ("claude", "pi", "codex", "omo") if main_installed(name)) if installed is None else set(installed)
+    starts = [panel_hint(label) for name, label in (("claude", "1_claude"), ("pi", "2_pi"), ("codex", "0_codex"),
+                                                    ("omo", "5_omo"))
               if name in installed]
     return (" ".join(starts + [panel_hint("s_swap_main"), panel_hint("question_more") + " " + panel_hint("f5_back")]),
             " ".join(panel_hint(name) for name in ("f9_chat_board", "f8_modes", "f5_control", "question_keys", "m_modes", "i_headers")))

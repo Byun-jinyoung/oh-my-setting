@@ -20,7 +20,7 @@
   ],
   "profiles": {
     "exec-only": {
-      "launch_main": {"status": "unsupported", "verified": "fixture", "note": "panel mains are claude, codex, pi, agy only (terminal_panel.py _LAUNCH_HARNESSES)"},
+      "launch_main": {"status": "unsupported", "verified": "fixture", "note": "panel mains are claude, codex, pi, agy, omo only (terminal_panel.py _LAUNCH_HARNESSES)"},
       "worker_call": {
         "status": "supported", "verified": "fixture",
         "impl": ["scripts/lib/peer-common.sh::ma_provider_attempt_run", "scripts/lib/provider-registry.sh::oms_provider_supports_access"],

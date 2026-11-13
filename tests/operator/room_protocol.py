@@ -969,15 +969,15 @@ for answers, installed, expected in (
         ([" AGY "], {"agy"}, ["agy"]),
         ([""], set(), []), ([EOFError], set(), []),
         (["0", "4", "pi", "malformed input", ""], set(), []),
-        (["claude", "codex", "agy", ""], set(), [])):
+        (["claude", "codex", "agy", "omo", ""], set(), [])):
     output = io.StringIO()
     output.isatty = lambda: True
     with patch("sys.stdin", new=SimpleNamespace(isatty=lambda: True)), \
             patch("sys.stdout", new=output), patch("builtins.input", side_effect=answers), \
             patch.object(panel, "main_installed", side_effect=lambda name, *a: name in installed):
         assert panel_native._pick_main() == expected
-    assert all(name in output.getvalue() for name in ("Claude", "Codex", "Agy"))
-    for name in set(("claude", "codex", "agy")) - installed:
+    assert all(name in output.getvalue() for name in ("Claude", "Codex", "Agy", "OmO"))
+    for name in set(("claude", "codex", "agy", "omo")) - installed:
         assert panel.main_missing(name) in output.getvalue()
 for tty_in, tty_out in ((False, True), (True, False)):
     output = io.StringIO()
@@ -1031,7 +1031,7 @@ for count, guard_error in ((1, None), (2, None), (0, ValueError("unknown legacy 
 
 # Public inline startup keeps explicit authority ahead of both environment and picker.
 for launch, configured, answer, expected in ((None, None, "1", "claude"), (None, None, "2", "codex"),
-        (None, None, "3", "agy"), (None, None, "", None), (None, None, EOFError, None),
+        (None, None, "3", "agy"), (None, None, "4", "omo"), (None, None, "", None), (None, None, EOFError, None),
         (None, "", None, None), (None, "invalid", None, None), (None, "pi", None, "pi"),
         ("codex", "claude", None, "codex")):
     with ExitStack() as stack:

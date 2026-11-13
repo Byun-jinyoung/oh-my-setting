@@ -85,7 +85,7 @@ def native_adapter(provider):
 
 def native_binary(provider):
     from terminal_panel import MAIN_HARNESSES, native_adapter
-    if provider in MAIN_HARNESSES or provider == "agy":
+    if provider in MAIN_HARNESSES or provider in FRESH_ONLY:
         return provider
     adapter = native_adapter(provider)
     if not adapter:
@@ -93,18 +93,26 @@ def native_binary(provider):
     return adapter
 
 
+# Mains whose native history OMS cannot yet bind: every launch starts fresh.
+FRESH_ONLY = {"agy": "Agy resume needs a verified native session binding; start a fresh Agy main",
+              "omo": "OmO resume needs a verified native session binding; start a fresh OmO main"}
+
+
 def resolve_main(harness, model=None):
     """Resolve durable ownership separately from the CLI and its inference transport."""
     from terminal_panel import policy, provider_catalog
-    builtin = harness in ("claude", "codex", "pi", "agy")
+    builtin = harness in ("claude", "codex", "pi", "agy", "omo")
     if not builtin and not native_adapter(harness):
         raise ValueError("unknown main harness")
     explicit = model is not None
     if explicit and (not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9_./:][A-Za-z0-9_./:-]{0,159}", model)):
         raise ValueError("invalid exact main model")
-    owner = {"pi": "codex", "agy": "antigravity"}.get(harness, harness)
+    owner = {"pi": "codex", "agy": "antigravity", "omo": "claude"}.get(harness, harness)
     preset = policy()["main"].get(owner, {"model": None if builtin else "provider-default",
                                            "effort": "native-settings"})
+    if harness == "omo":
+        # OmO keeps its own provider and model settings; a bare model ID can match several of its providers.
+        preset = {"model": "provider-default", "effort": "native-settings"}
     model = model if explicit else preset["model"]
     transport = "direct"
     if harness == "pi":
@@ -226,7 +234,7 @@ def native_command(provider, repo, resume=None, model=None, task=None, room_id=N
     from terminal_panel import policy, room_instructions
     instructions = (Path(context_file).read_text(encoding="utf-8") if context_file and provider in _LAUNCH_HARNESSES else
                     bootstrap(main_owner(provider, model), repo) + room_instructions(room_id, member))
-    if provider in ("claude", "codex", "agy"):
+    if provider in ("claude", "codex", "agy", "omo"):
         permissions = os.environ.get("OMS_PANEL_MAIN_PERMISSIONS", "full")
         if permissions not in ("full", "native"):
             raise ValueError("OMS_PANEL_MAIN_PERMISSIONS must be full or native")
@@ -253,6 +261,19 @@ def native_command(provider, repo, resume=None, model=None, task=None, room_id=N
             command += ["--dangerously-skip-permissions"]
         if model is not None:
             command += ["--model", resolve_main(provider, model)["model"]]
+        return command
+    if provider == "omo":
+        if resume:
+            raise ValueError(FRESH_ONLY["omo"])
+        instructions = "You use the OmO harness. OMS owner is claude. " + instructions
+        command = ["omo", "--extension", str(Path(__file__).with_name("pi-oms-extension.mjs"))]
+        if permissions == "full":
+            command += ["--permission-preset", "full-access"]
+        if model is not None:
+            command += ["--model", resolve_main(provider, model)["model"]]
+        command += ["--append-system-prompt", instructions]
+        if task:
+            command += ["--", "User task (data): " + json.dumps(task, ensure_ascii=False)]
         return command
     command = [provider]
     preset = policy()["main"].get(provider, {"model": None, "effort": "native-settings"})
@@ -397,7 +418,7 @@ def _main_terminal_owner(provider, repo, session, pane, attempt, ident):
             or not room.same_room(repo, previous.get("refs", {}).get("panel_room_id"), ident)
             or previous.get("refs", {}).get("panel_room_participant", attempt) != window[4]):
         raise ValueError("previous main has no confirmed terminal owner; restart refused")
-    resume = previous.get("refs", {}).get("native_session") if provider not in ("pi", "agy") else None
+    resume = previous.get("refs", {}).get("native_session") if provider not in ("pi", *FRESH_ONLY) else None
     if provider != "pi":
         member = room.participant(room.status(repo, ident), window[4])
         if (not member["joined"] or member["role"] != "main"
@@ -420,8 +441,8 @@ def run_native(provider, repo, resume=None, model=None, task=None):
     from terminal_panel import run_single_native, session_stored, tmux_command
     if room._child():
         raise ValueError("workers cannot open native owner sessions")
-    if provider == "agy" and resume:
-        raise ValueError("Agy resume needs a verified native session binding; start a fresh Agy main")
+    if provider in FRESH_ONLY and resume:
+        raise ValueError(FRESH_ONLY[provider])
     if resume:
         # Reject foreign rooms before competing for the process-lifetime lease.
         # run_single_native repeats this check under the native-session lock.
@@ -442,7 +463,7 @@ def run_native(provider, repo, resume=None, model=None, task=None):
                     release_dead_mains(repo)
                     if live_mains(repo, session, ident) >= MAX_LIVE_MAINS:
                         raise ValueError("another main is live or unverified; finish it before restarting here")
-                    resume = previous.get("refs", {}).get("native_session") if provider not in ("pi", "agy") else None
+                    resume = previous.get("refs", {}).get("native_session") if provider not in ("pi", *FRESH_ONLY) else None
                     if resume and not session_stored(provider, resume):
                         resume = None
                 check_legacy_main(repo)
@@ -542,8 +563,8 @@ def run_single_native(provider, repo, resume=None, model=None, task=None, _exit_
     from terminal_panel import _lock, _native_resume_binding, _run_native, ensure_room, main_history
     if room._child():
         raise ValueError("workers cannot open native owner sessions")
-    if provider == "agy" and resume:
-        raise ValueError("Agy resume needs a verified native session binding; start a fresh Agy main")
+    if provider in FRESH_ONLY and resume:
+        raise ValueError(FRESH_ONLY[provider])
     if resume:
         key = hashlib.sha256((provider + "\0" + resume).encode()).hexdigest()[:32]
         with _lock(repo, "panel-native-" + key):
@@ -593,8 +614,8 @@ def _run_native(provider, repo, resume=None, model=None, task=None, room_id=None
     from terminal_panel import managed_session, native_command, native_repository, pane_option
     from terminal_panel import room_instructions, safe_label, tmux_command, update_activity
     harness = provider
-    if harness == "agy" and resume:
-        raise ValueError("Agy resume needs a verified native session binding; start a fresh Agy main")
+    if harness in FRESH_ONLY and resume:
+        raise ValueError(FRESH_ONLY[harness])
     execution = native_repository(repo)
     if not main_installed(harness, model):
         raise ValueError(main_missing(harness, model))
@@ -890,10 +911,10 @@ def _pick_main():
     from terminal_panel import main_installed, main_missing
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         return []
-    choices = ("claude", "codex", "agy")
+    choices = ("claude", "codex", "agy", "omo")
     print("Choose a main (Enter = control only):")
     for index, name in enumerate(choices, 1):
-        print("  %d %s%s" % (index, {"claude": "Claude", "codex": "Codex", "agy": "Agy"}[name],
+        print("  %d %s%s" % (index, {"claude": "Claude", "codex": "Codex", "agy": "Agy", "omo": "OmO"}[name],
                                 "" if main_installed(name) else " — " + main_missing(name)))
     while True:
         try:
@@ -902,9 +923,9 @@ def _pick_main():
             return []
         if not answer:
             return []
-        selected = dict(zip(("1", "2", "3"), choices)).get(answer, answer)
+        selected = dict(zip(("1", "2", "3", "4"), choices)).get(answer, answer)
         if selected not in choices:
-            print("Select claude, codex or agy; Enter opens control only.")
+            print("Select claude, codex, agy or omo; Enter opens control only.")
         elif not main_installed(selected):
             print(main_missing(selected))
         else:
@@ -1555,7 +1576,7 @@ def swap_main(repo, harness, model=None, *, precondition=None, auto_handoff=None
                            check=True, timeout=3, stdin=subprocess.DEVNULL)
             exit_requested = True  # A failed submit can still have delivered the exit request.
             try:
-                submit_owned(pane, stamp, "/quit" if old["refs"].get("panel_harness") == "pi" else "/exit")
+                submit_owned(pane, stamp, "/quit" if old["refs"].get("panel_harness") in ("pi", "omo") else "/exit")
             except PaneChanged:
                 exit_requested = False  # This refusal proves nothing was typed; an ordinary send failure cannot.
                 clear_swap_option("@oms_panel_swap_attempt")
@@ -1598,10 +1619,11 @@ def swap_main(repo, harness, model=None, *, precondition=None, auto_handoff=None
             return {"provider": harness, "model": model, "room": ident, "participant": member,
                     "window": window, "handoff": "main" if supplied else "automatic_digest"}
         except (OSError, ValueError, subprocess.SubprocessError) as error:
-            if old_exited and old["refs"].get("panel_harness") == "pi":
-                # A fresh takeover needs no Pi resume binding; rollback still cannot resume Pi safely.
-                raise ValueError("Pi main exited and will not be restored; no verified replacement main; "
-                                 "room claims and handoff preserved at %s: %s" % (handoff_file, error)) from error
+            if old_exited and old["refs"].get("panel_harness") in ("pi", "omo"):
+                # A fresh takeover needs no Pi/OmO resume binding; rollback still cannot resume either safely.
+                raise ValueError("%s main exited and will not be restored; no verified replacement main; "
+                                 "room claims and handoff preserved at %s: %s" % (
+                                     {"pi": "Pi", "omo": "OmO"}[old["refs"]["panel_harness"]], handoff_file, error)) from error
             raise
         finally:
             if not exit_requested and handoff_file is not None:
@@ -1864,8 +1886,8 @@ def open_native(provider, repo, resume=None, model=None, task=None, view="auto",
     from terminal_panel import ENTRY, MAX_LIVE_MAINS, PANEL_SESSION, ROOT, _lock, add_main_window
     from terminal_panel import check_legacy_main, ensure_room, live_main_refusal, live_mains, main_installed
     from terminal_panel import _native_resume_binding, main_owner, native_repository, panel_room, run_native, tmux_command
-    if provider == "agy" and resume:
-        raise ValueError("Agy resume needs a verified native session binding; start a fresh Agy main")
+    if provider in FRESH_ONLY and resume:
+        raise ValueError(FRESH_ONLY[provider])
     execution = native_repository(repo)
     if not main_installed(provider, model):
         raise ValueError(main_missing(provider, model))

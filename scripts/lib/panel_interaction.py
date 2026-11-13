@@ -1197,7 +1197,7 @@ def interactive(repo, view="auto", attention_only=False):
                 previous = "Swapped to %s %s in the same room" % (result["provider"], result["model"])
                 continue
             if choice in ("1", "2", "0", "3"):
-                selected = {"1": "claude", "2": "pi", "0": "codex"}.get(choice) or read_field("Harness (claude/pi/codex/agy or opted-in native adapter): ")
+                selected = {"1": "claude", "2": "pi", "0": "codex"}.get(choice) or read_field("Harness (claude/pi/codex/agy/omo or opted-in native adapter): ")
                 if selected not in _LAUNCH_HARNESSES:
                     selected = provider_catalog(selected)[0]["provider"]
                     native_binary(selected)
@@ -1212,9 +1212,9 @@ def interactive(repo, view="auto", attention_only=False):
                 else:
                     previous = "%s native session exit=%s" % (provider, status)
             elif choice == "4":
-                selected = read_field("Main harness (claude/pi/codex/agy): ")
+                selected = read_field("Main harness (claude/pi/codex/agy/omo): ")
                 if selected not in _LAUNCH_HARNESSES:
-                    raise ValueError("select claude, pi, codex or agy")
+                    raise ValueError("select claude, pi, codex, agy or omo")
                 harness, provider = selected, main_owner(selected)
                 previous = "main provider selected"
             elif choice == "t":

@@ -19,7 +19,8 @@ def main_owner_matches(harness, owner):
     """Match durable pairs; callers still prove adapter registration and lifecycle ownership."""
     if not isinstance(harness, str) or not isinstance(owner, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", harness):
         return False
-    pairs = {"claude": ("claude",), "codex": ("codex",), "pi": ("codex", "pi"), "agy": ("antigravity",)}
+    pairs = {"claude": ("claude",), "codex": ("codex",), "pi": ("codex", "pi"), "agy": ("antigravity",),
+             "omo": ("claude",)}
     return owner in pairs.get(harness, (harness,))
 
 
