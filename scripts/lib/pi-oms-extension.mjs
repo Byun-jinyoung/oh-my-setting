@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const helper = fileURLToPath(new URL("./hook_state.py", import.meta.url));
@@ -70,11 +70,39 @@ export default function (pi) {
     return pending;
   };
 
+  // A reattached panel lives in another herdr-core terminal, which learns agent
+  // state only from OSC 7501: the panel replays this pane state there.
+  const tmuxPane = process.env.TMUX && process.env.TMUX_PANE;
+  const markState = (state) => {
+    if (enabled() && tmuxPane) {
+      execFile("tmux", ["set-option", "-p", "-t", tmuxPane, "@oms_pi_state", state], () => {});
+    }
+  };
+  // `hc run` takes its parent from HC_TERMINAL_ID; adopt the terminal the
+  // panel was last attached from before each tool runs.
+  const terminalNames = ["HC_TERMINAL_ID", "HC_TERMINAL_SOCKET", "HC_SCOPE"];
+  const refreshTerminal = () => {
+    const panel = process.env.OMS_PANEL_SESSION;
+    if (!enabled() || !tmuxPane || !panel) return;
+    let listing;
+    try {
+      listing = execFileSync("tmux", ["show-environment", "-t", `=${panel}`],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 2000 });
+    } catch {
+      return;
+    }
+    for (const line of listing.split("\n")) {
+      const cut = line.indexOf("=");
+      if (cut > 0 && terminalNames.includes(line.slice(0, cut))) process.env[line.slice(0, cut)] = line.slice(cut + 1);
+    }
+  };
+
   const resetContext = async (source, ctx) => {
     if (!enabled()) return;
     await enqueue("relay-hint", payload("SessionStart", ctx, { source }));
   };
   pi.on("session_start", async (event, ctx) => {
+    markState("idle");
     // Reload keeps the conversation; new/resumed/forked sessions replace it.
     if (event.reason === "reload") return;
     const source = event.reason === "new" ? "clear"
@@ -86,8 +114,12 @@ export default function (pi) {
   });
   pi.on("before_agent_start", async (event, ctx) => {
     if (!enabled()) return;
+    markState("working");
     const content = await enqueue("panel-hook", payload("UserPromptSubmit", ctx, { prompt: event.prompt }));
     if (content) return { message: { customType: "oms-room", content, display: false } };
+  });
+  pi.on("tool_call", () => {
+    refreshTerminal();
   });
   pi.on("tool_execution_end", (event, ctx) => {
     if (!enabled() || toolPending) return;
@@ -100,6 +132,7 @@ export default function (pi) {
   // follow, so Stop waits for agent_settled (Pi 0.80.4+).
   pi.on("agent_settled", async (_event, ctx) => {
     if (!enabled()) return;
+    markState("idle");
     await enqueue("relay", payload("Stop", ctx));
   });
 }

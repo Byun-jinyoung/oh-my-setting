@@ -1661,6 +1661,32 @@ def spawn_single_main(repo, provider, task=None, model=None):
             "owner": main_owner(provider, model), "room": ident}
 
 
+def rebind_terminal(session):
+    """Hand a (re)attached panel to the herdr-core terminal now showing it.
+
+    Running mains keep the terminal id they started under. Pi-extension mains read this session copy
+    before each tool (the `hc run` parent), and their last state is replayed here once because
+    herdr-core learns an agent only from OSC 7501.
+    """
+    from terminal_panel import tmux_command
+    if not os.environ.get("HC_TERMINAL_ID"):
+        return
+    for name in ("HC_TERMINAL_ID", "HC_TERMINAL_SOCKET", "HC_SCOPE"):
+        if name in os.environ:
+            subprocess.run(tmux_command("set-environment", "-t", "=" + session, name, os.environ[name]),
+                           check=False, timeout=3, stdin=subprocess.DEVNULL)
+    states = subprocess.run(tmux_command("list-panes", "-s", "-t", "=" + session, "-F", "#{@oms_pi_state}"),
+                            capture_output=True, text=True, check=False, timeout=3,
+                            stdin=subprocess.DEVNULL).stdout.split()
+    if not states:
+        return
+    try:
+        with open("/dev/tty", "w") as tty:
+            tty.write("\x1b]7501;state=%s:app=pi\x1b\\" % ("working" if "working" in states else "idle"))
+    except OSError:
+        pass
+
+
 def split_panel(repo, view="auto", attention_only=False, launch=None, resume=None, model=None, task=None, retry=True):
     from terminal_panel import _lock, bind_main_keys, construct_panel, legacy_session, recorded_room, resolve_session
     from terminal_panel import session_owner, tmux_command
@@ -1725,6 +1751,8 @@ def split_panel(repo, view="auto", attention_only=False, launch=None, resume=Non
                 raise
         else:
             raise
+    if not os.environ.get("TMUX"):
+        rebind_terminal(session)
     attach = "switch-client" if os.environ.get("TMUX") else "attach-session"
     result = subprocess.call(tmux_command(attach, "-t", "=" + session))
     print("OMS session %s remains available while its panes are running." % session)

@@ -2371,6 +2371,27 @@ with patch.dict(os.environ, {"HC_TERMINAL_ID": "t36", "HC_TERMINAL_SOCKET": "/ru
     assert {"HC_TERMINAL_ID=t36", "HC_TERMINAL_SOCKET=/run/hc.sock", "HC_SCOPE=scope"} <= set(panel.panel_environment())
 with patch.dict(os.environ, {}, clear=True):
     assert not any(entry.startswith("HC_") for entry in panel.panel_environment())
+# Reattaching from another herdr tab hands the session to that terminal and replays the Pi main's state.
+import panel_native
+from types import SimpleNamespace
+for pane_states, replay in (("idle\nworking\n", "state=working"), ("idle\n\n", "state=idle"), ("\n", None)):
+    calls, written = [], []
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout=pane_states if "list-panes" in command else "")
+    class FakeTty(io.StringIO):
+        def __exit__(self, *exc):
+            written.append(self.getvalue())
+    with patch.dict(os.environ, {"HC_TERMINAL_ID": "t66", "HC_TERMINAL_SOCKET": "/run/hc.sock"}, clear=True), \
+            patch.object(panel_native.subprocess, "run", fake_run), \
+            patch("panel_native.open", create=True, new=lambda path, mode: FakeTty()):
+        panel_native.rebind_terminal("oms-fixture")
+    assert [c[-4:] for c in calls if "set-environment" in c] == [
+        ["-t", "=oms-fixture", "HC_TERMINAL_ID", "t66"], ["-t", "=oms-fixture", "HC_TERMINAL_SOCKET", "/run/hc.sock"]]
+    assert written == ([] if replay is None else ["\x1b]7501;%s:app=pi\x1b\\" % replay]), written
+with patch.dict(os.environ, {}, clear=True), patch.object(panel_native.subprocess, "run") as untouched:
+    panel_native.rebind_terminal("oms-fixture")
+    untouched.assert_not_called()
 with patch.dict(os.environ, {"OMS_PANEL_ATTENTION_BELL": "1", "OMS_PANEL_ATTENTION_CMD": "notify --json"}, clear=True):
     assert "OMS_PANEL_ATTENTION_BELL=1" in panel.panel_environment()
     assert "OMS_PANEL_ATTENTION_CMD=notify --json" in panel.panel_environment()

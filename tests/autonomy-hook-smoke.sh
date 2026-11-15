@@ -2446,7 +2446,7 @@ else:
     subprocess.run(["node", "--input-type=module", "-", extension, str(repo)], env=child_env, check=True,
                    timeout=30, input=r'''
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -2462,7 +2462,7 @@ for (const overrides of [{ OMS_PANEL_MAIN_ATTEMPT: "" }, { OMS_HARNESS_CHILD: "1
   process.env = original;
 }
 register(pi);
-assert.deepEqual([...handlers.keys()], ["session_start", "session_compact", "before_agent_start", "tool_execution_end", "agent_settled"]);
+assert.deepEqual([...handlers.keys()], ["session_start", "session_compact", "before_agent_start", "tool_call", "tool_execution_end", "agent_settled"]);
 const ctx = { cwd: repo };
 const activity = join(repo, ".oms/hooks/panel-activity/pi-main.json");
 const row = () => JSON.parse(readFileSync(activity, "utf8"));
@@ -2532,6 +2532,34 @@ const scan = path => {
   }
 };
 scan(join(repo, ".oms"));
+// After a reattach, tools adopt the panel session's herdr-core terminal (the `hc run`
+// parent) and turns leave their state on the pane for the panel to replay.
+const bin = join(repo, "fake-tmux-bin");
+const tmuxLog = join(repo, "tmux.log");
+mkdirSync(bin);
+writeFileSync(join(bin, "tmux"), `#!/bin/sh
+echo "$*" >> '${tmuxLog}'
+[ "$1" = show-environment ] && printf 'HC_SCOPE=s2\\nHC_TERMINAL_ID=t66\\nOTHER=x\\n-HC_TERMINAL_SOCKET\\n'
+exit 0
+`, { mode: 0o755 });
+const beforeTmux = { ...process.env };
+Object.assign(process.env, { TMUX: "/tmp/tmux-fixture,1,0", TMUX_PANE: "%7", HC_TERMINAL_ID: "t62",
+  HC_TERMINAL_SOCKET: "/run/hc.sock", PATH: `${bin}:${process.env.PATH}` });
+const attached = new Map();
+register({ on: (event, handler) => attached.set(event, handler) });
+assert.equal(attached.get("tool_call")({ toolName: "bash" }, ctx), undefined);
+assert.equal(process.env.HC_TERMINAL_ID, "t66");
+assert.equal(process.env.HC_SCOPE, "s2");
+assert.equal(process.env.HC_TERMINAL_SOCKET, "/run/hc.sock");
+assert.equal(process.env.OTHER, undefined);
+await attached.get("agent_settled")({ type: "agent_settled", aborted: false }, ctx);
+const marked = Date.now() + 5000;
+while (!readFileSync(tmuxLog, "utf8").includes("@oms_pi_state idle") && Date.now() < marked) {
+  await new Promise(resolve => setTimeout(resolve, 20));
+}
+assert.match(readFileSync(tmuxLog, "utf8"), /^show-environment -t =oms-pi-fixture$/m);
+assert.match(readFileSync(tmuxLog, "utf8"), /^set-option -p -t %7 @oms_pi_state idle$/m);
+process.env = beforeTmux;
 // Missing Python is fail-open and does not inject an empty message.
 process.env.PATH = "";
 assert.equal(await handlers.get("before_agent_start")({ prompt }, ctx), undefined);
