@@ -1665,7 +1665,7 @@ def rebind_terminal(session):
     """Hand a (re)attached panel to the herdr-core terminal now showing it.
 
     Running mains keep the terminal id they started under. Pi-extension mains read this session copy
-    before each tool (the `hc run` parent), and their last state is replayed here once because
+    before each tool (the `hc run` parent), and every main's last state is replayed here once because
     herdr-core learns an agent only from OSC 7501.
     """
     from terminal_panel import tmux_command
@@ -1675,14 +1675,19 @@ def rebind_terminal(session):
         if name in os.environ:
             subprocess.run(tmux_command("set-environment", "-t", "=" + session, name, os.environ[name]),
                            check=False, timeout=3, stdin=subprocess.DEVNULL)
-    states = subprocess.run(tmux_command("list-panes", "-s", "-t", "=" + session, "-F", "#{@oms_pi_state}"),
+    # Pi marks a bare state; hook-reported mains (hook_state.report_herdr_state) mark state:app.
+    states = subprocess.run(tmux_command("list-panes", "-s", "-t", "=" + session, "-F",
+                                         "#{@oms_pi_state}#{@oms_agent_state}"),
                             capture_output=True, text=True, check=False, timeout=3,
                             stdin=subprocess.DEVNULL).stdout.split()
     if not states:
         return
+    state, _, app = states[0].partition(":")
+    if not app:
+        state, app = ("working" if "working" in states else "idle"), "pi"
     try:
         with open("/dev/tty", "w") as tty:
-            tty.write("\x1b]7501;state=%s:app=pi\x1b\\" % ("working" if "working" in states else "idle"))
+            tty.write("\x1b]7501;state=%s:app=%s\x1b\\" % (state, app))
     except OSError:
         pass
 

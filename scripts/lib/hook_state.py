@@ -424,6 +424,9 @@ def cmd_telemetry(_: argparse.Namespace) -> int:
         record_panel_activity(payload)
         record_permission_prompt(payload)
         return 0
+    if (payload.get("hook_event_name") or payload.get("hookEventName")) == "SessionStart" \
+            and is_panel_main() and not is_harness_child():
+        report_herdr_state(payload)
     repo = hook_repo(payload)
     # Hooks do not adopt arbitrary repositories merely because an agent opened
     # one. `oms init` is the explicit ownership boundary.
@@ -1492,10 +1495,47 @@ def apply_patch_paths(command: str, include_deleted: bool = False) -> list[str]:
     return names
 
 
+HERDR_APPS = {"claude": "claude-code", "codex": "codex", "agy": "antigravity"}
+
+
+def report_herdr_state(payload: dict[str, Any]) -> None:
+    """Tell herdr-core this panel main's state; it learns agents only from OSC 7501.
+
+    Inside the panel's tmux these CLIs report nothing (Claude's OSC 7501 probe gets no reply,
+    raw OSC is dropped), so the hook writes it to the terminals attached to the panel and keeps
+    it on the pane for a reattach to replay. Pi and OmO report through their own extension.
+    """
+    app = HERDR_APPS.get(os.environ.get("OMS_PANEL_HARNESS", ""))
+    pane = os.environ.get("TMUX_PANE", "")
+    if not app or not os.environ.get("TMUX") or not re.fullmatch(r"%\d+", pane):
+        return
+    event = payload.get("hook_event_name") or payload.get("hookEventName")
+    if event == "Notification":
+        if payload.get("notification_type") not in ("permission_prompt", "elicitation_dialog"):
+            return
+        state = "blocked"
+    else:
+        state = {"UserPromptSubmit": "working", "PreInvocation": "working", "PostToolUse": "working",
+                 "Stop": "idle", "SessionStart": "idle"}.get(event)
+    if state is None:
+        return
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        subprocess.run(["tmux", "set-option", "-p", "-t", pane, "@oms_agent_state", state + ":" + app],
+                       check=False, timeout=2, stdin=subprocess.DEVNULL, capture_output=True)
+        ttys = subprocess.run(["tmux", "list-clients", "-t", "=" + os.environ["OMS_PANEL_SESSION"],
+                               "-F", "#{client_tty}"], check=False, timeout=2, stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True).stdout.split()
+        for tty in ttys:
+            if tty.startswith("/dev/"):
+                with contextlib.suppress(OSError), open(tty, "w") as handle:
+                    handle.write("\x1b]7501;state=%s:app=%s\x1b\\" % (state, app))
+
+
 def record_panel_activity(payload: dict[str, Any], repo: Path | None = None) -> None:
     """Turn presence only; never copy prompt/tool text or append room events."""
     if not is_panel_main() or is_harness_child():
         return
+    report_herdr_state(payload)
     event = payload.get("hook_event_name") or payload.get("hookEventName")
     if event not in ("UserPromptSubmit", "PostToolUse", "Stop", "Notification"):
         return

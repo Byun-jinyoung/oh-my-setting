@@ -2374,7 +2374,8 @@ with patch.dict(os.environ, {}, clear=True):
 # Reattaching from another herdr tab hands the session to that terminal and replays the Pi main's state.
 import panel_native
 from types import SimpleNamespace
-for pane_states, replay in (("idle\nworking\n", "state=working"), ("idle\n\n", "state=idle"), ("\n", None)):
+for pane_states, replay in (("idle\nworking\n", "state=working:app=pi"), ("idle\n\n", "state=idle:app=pi"),
+                            ("\nblocked:claude-code\n", "state=blocked:app=claude-code"), ("\n", None)):
     calls, written = [], []
     def fake_run(command, **kwargs):
         calls.append(command)
@@ -2388,7 +2389,7 @@ for pane_states, replay in (("idle\nworking\n", "state=working"), ("idle\n\n", "
         panel_native.rebind_terminal("oms-fixture")
     assert [c[-4:] for c in calls if "set-environment" in c] == [
         ["-t", "=oms-fixture", "HC_TERMINAL_ID", "t66"], ["-t", "=oms-fixture", "HC_TERMINAL_SOCKET", "/run/hc.sock"]]
-    assert written == ([] if replay is None else ["\x1b]7501;%s:app=pi\x1b\\" % replay]), written
+    assert written == ([] if replay is None else ["\x1b]7501;%s\x1b\\" % replay]), written
 with patch.dict(os.environ, {}, clear=True), patch.object(panel_native.subprocess, "run") as untouched:
     panel_native.rebind_terminal("oms-fixture")
     untouched.assert_not_called()

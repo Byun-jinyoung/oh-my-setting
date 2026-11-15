@@ -2420,6 +2420,38 @@ with patch.dict(os.environ, env), patch.object(hook_state.subprocess, "run", sid
     assert path.is_symlink() and target.read_text() == "private"
     path.unlink()
     target.unlink()
+# Claude/Codex/Agy mains inside the panel's tmux report nothing to herdr-core themselves:
+# the hook marks the pane and writes OSC 7501 to each attached client terminal.
+import io
+from types import SimpleNamespace
+for harness, app in (("claude", "claude-code"), ("codex", "codex"), ("agy", "antigravity"), ("omo", None), ("pi", None)):
+    for event, extra, state in (("SessionStart", {}, "idle"), ("UserPromptSubmit", {}, "working"),
+                                ("PreInvocation", {}, "working"), ("Stop", {}, "idle"),
+                                ("Notification", {"notification_type": "permission_prompt"}, "blocked"),
+                                ("Notification", {"notification_type": "idle_prompt"}, None)):
+        calls, written = [], []
+        def fake_run(command, **kwargs):
+            calls.append(command)
+            return SimpleNamespace(returncode=0, stdout="/dev/pts/7\n/dev/pts/9\n" if "list-clients" in command else "")
+        class FakeTty(io.StringIO):
+            def __exit__(self, *exc):
+                written.append((self.name, self.getvalue()))
+        def fake_open(name, mode):
+            tty = FakeTty()
+            tty.name = name
+            return tty
+        with patch.dict(os.environ, dict(env, OMS_PANEL_HARNESS=harness, TMUX="/tmp/tmux-1/default,1,0",
+                                         TMUX_PANE="%3")), \
+                patch.object(hook_state.subprocess, "run", fake_run), \
+                patch("hook_state.open", create=True, new=fake_open):
+            hook_state.report_herdr_state(dict(payload, hook_event_name=event, **extra))
+        if app is None or state is None:
+            assert calls == [] and written == [], (harness, event, calls)
+            continue
+        sequence = "\x1b]7501;state=%s:app=%s\x1b\\" % (state, app)
+        assert written == [("/dev/pts/7", sequence), ("/dev/pts/9", sequence)], written
+        assert ["tmux", "set-option", "-p", "-t", "%3", "@oms_agent_state", state + ":" + app] in calls, calls
+        assert ["tmux", "list-clients", "-t", "=oms-fixture", "-F", "#{client_tty}"] in calls, calls
 # No existing check exercised a Pi extension; reuse the panel-activity fixture.
 import shutil
 from types import SimpleNamespace
