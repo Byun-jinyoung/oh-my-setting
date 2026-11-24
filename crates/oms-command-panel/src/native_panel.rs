@@ -203,6 +203,9 @@ pub const PANEL_ENV_PASSTHROUGH: &[&str] = &[
     "OMS_EXECUTION_REPO",
     "OMS_MODEL",
     "OMS_ANTIGRAVITY_SETTINGS",
+    "HC_TERMINAL_ID",
+    "HC_TERMINAL_SOCKET",
+    "HC_SCOPE",
 ];
 
 struct MainResolution {
@@ -1913,12 +1916,41 @@ fn read_selection(
     }
 }
 
+/// OSC 7501 for a stored `@oms_agent_state` value (`state:app`); `None` if malformed.
+pub fn herdr_osc(stored: &str) -> Option<String> {
+    let (state, app) = stored.split_once(':')?;
+    let ok = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    (ok(state) && ok(app)).then(|| format!("\x1b]7501;state={state}:app={app}\x1b\\"))
+}
+
+/// A re-attached panel is a new terminal for herdr, and an idle main reports
+/// nothing on its own, so replay the last state the hooks stored on the pane.
+fn replay_herdr_state(session: &str) {
+    let Ok(out) = Command::new("tmux")
+        .args(["list-panes", "-s", "-t", &format!("={session}"), "-F"])
+        .arg("#{@oms_agent_state}")
+        .stderr(Stdio::null())
+        .output()
+    else {
+        return;
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    if let Some(seq) = text.lines().find_map(herdr_osc)
+        && let Ok(mut tty) = std::fs::OpenOptions::new().write(true).open("/dev/tty")
+    {
+        let _ = tty.write_all(seq.as_bytes());
+    }
+}
+
 fn attach_session(session: &str) -> Result<()> {
     let attach_verb = if std::env::var_os("TMUX").is_some_and(|v| !v.is_empty()) {
         "switch-client"
     } else {
         "attach-session"
     };
+    if attach_verb == "attach-session" {
+        replay_herdr_state(session);
+    }
     let status = Command::new("tmux")
         .args([attach_verb, "-t", &format!("={session}")])
         .status()

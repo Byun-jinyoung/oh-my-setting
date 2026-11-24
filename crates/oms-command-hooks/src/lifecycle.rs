@@ -180,7 +180,24 @@ pub(crate) fn telemetry(v: &Value, ctx: &Context<'_>) {
         event_row(ctx, &repo, v, fields);
     }
 }
+/// herdr state for a hook event; tool-free events outside the table stay silent.
+fn herdr_state(v: &Value) -> Option<&'static str> {
+    match event(v) {
+        "UserPromptSubmit" | "PostToolUse" => Some("working"),
+        "Stop" => Some("idle"),
+        "Notification"
+            if ["permission_prompt", "elicitation_dialog"]
+                .contains(&text(v, "notification_type")) =>
+        {
+            Some("blocked")
+        }
+        _ => None,
+    }
+}
 pub(crate) fn activity(v: &Value, repo: &Path, ctx: &Context<'_>) {
+    if let Some(state) = herdr_state(v) {
+        oms_command_lifecycle::herdr_state::report(state);
+    }
     if ctx.snapshot.activity.get().is_some()
         || !panel()
         || !["UserPromptSubmit", "PostToolUse", "Stop", "Notification"].contains(&event(v))

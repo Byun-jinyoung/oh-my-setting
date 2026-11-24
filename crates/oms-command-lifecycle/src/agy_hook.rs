@@ -690,6 +690,13 @@ pub(crate) fn run(
     } else {
         false
     };
+    if !is_child {
+        match options.action.as_str() {
+            "preinvocation" => crate::herdr_state::report("working"),
+            "stop" => crate::herdr_state::report("idle"),
+            _ => {}
+        }
+    }
     if matches!(options.action.as_str(), "pretooluse" | "posttooluse") || is_child {
         return empty();
     }

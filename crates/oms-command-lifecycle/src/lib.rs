@@ -10,6 +10,7 @@ mod config;
 mod doctor;
 mod effects;
 mod fingerprint;
+pub mod herdr_state;
 mod hook_diagnostics;
 mod install;
 mod integrations;

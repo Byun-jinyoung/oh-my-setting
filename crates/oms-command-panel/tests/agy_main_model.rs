@@ -3,7 +3,7 @@
 
 use oms_command_panel::cli::Options;
 use oms_command_panel::native_panel::{
-    PANEL_ENV_PASSTHROUGH, apply_main_model_env, detect_antigravity_model, dry_run_plan,
+    PANEL_ENV_PASSTHROUGH, apply_main_model_env, detect_antigravity_model, dry_run_plan, herdr_osc,
     normalize_antigravity_model,
 };
 use oms_command_panel::render;
@@ -158,8 +158,25 @@ fn detects_from_env_and_settings_and_renders_fallback() {
 }
 
 #[test]
+fn herdr_replay_accepts_only_well_formed_state() {
+    assert_eq!(
+        herdr_osc("idle:claude-code").as_deref(),
+        Some("\x1b]7501;state=idle:app=claude-code\x1b\\")
+    );
+    for bad in ["", "idle", ":pi", "idle:", "idle:p\x1bi", "a:b:c"] {
+        assert_eq!(herdr_osc(bad), None, "{bad:?}");
+    }
+}
+
+#[test]
 fn passthrough_keeps_model_variables() {
-    for k in ["OMS_MODEL", "OMS_ANTIGRAVITY_SETTINGS"] {
+    for k in [
+        "OMS_MODEL",
+        "OMS_ANTIGRAVITY_SETTINGS",
+        "HC_TERMINAL_ID",
+        "HC_TERMINAL_SOCKET",
+        "HC_SCOPE",
+    ] {
         assert!(PANEL_ENV_PASSTHROUGH.contains(&k), "{k}");
     }
     let env_map = |cmd: &Command| -> std::collections::BTreeMap<String, Option<String>> {
