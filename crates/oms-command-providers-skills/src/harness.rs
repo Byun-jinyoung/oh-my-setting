@@ -135,6 +135,14 @@ fn extension_path(file: &str, extensions: &Path, _source: &Path) -> PathBuf {
 /// The native `oms` the embedded extension should call: this executable when it is `oms`,
 /// else an `oms` file beside it.
 fn oms_bin_for(exe: &Path) -> Option<PathBuf> {
+    // An installed native binary only runs hooks through the verified launcher
+    // (`--oms-dispatch`); called directly it exits 2 and the extension swallows it.
+    if exe.components().any(|c| c.as_os_str() == "oms-native")
+        && let Some(launcher) = home().ok().map(|h| h.join(".local/bin/oms"))
+        && launcher.is_file()
+    {
+        return Some(launcher);
+    }
     if exe.file_name().is_some_and(|n| n == "oms") {
         return Some(exe.to_owned());
     }
