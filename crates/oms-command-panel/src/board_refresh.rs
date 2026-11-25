@@ -144,7 +144,17 @@ impl RefreshKey {
             return false;
         }
         let mut mains = rows(&room["participants"]).iter().filter(|row| {
-            row["participant"] == member || (row["role"] == "main" && row["joined"] == true)
+            // Room admits a new Main once every panel-main attempt of the old one is
+            // terminal, and that old row stays joined; an unrecorded row still counts.
+            let participant = row["participant"].as_str().unwrap_or_default();
+            let last = &report["room_attempts"][participant];
+            let released = !participant.is_empty()
+                && state::main_participant(last) == participant
+                && last["tool"] == "panel-main"
+                && last["refs"]["panel_role"] == "main"
+                && last["terminal"] == true;
+            row["participant"] == member
+                || (row["role"] == "main" && row["joined"] == true && !released)
         });
         mains.next().is_some_and(|row| {
             row["participant"] == member
@@ -741,6 +751,46 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn released_main_row_does_not_change_scope() {
+        let dir = Scratch(std::env::temp_dir().join(format!(
+            "oms-board-key-{}",
+            oms_command_plan::storage::random_hex(8).unwrap()
+        )));
+        std::fs::create_dir(&dir.0).unwrap();
+        let key = RefreshKey::new(&dir.0, Some("room-current"), Some("attempt-current")).unwrap();
+        let old = |terminal: bool| {
+            json!({
+                "attempt_id":"attempt-old", "provider":"codex", "tool":"panel-main",
+                "state": if terminal { "done" } else { "working" }, "terminal": terminal,
+                "refs":{"panel_role":"main","panel_room_id":"room-current","panel_room_participant":"main-old"}
+            })
+        };
+        let snapshot = |attempts: &Value| Snapshot {
+            status: 0,
+            report: json!({
+                "room":{"id":"room-current","closed":false,"participants":[
+                    {"participant":"attempt-current","provider":"codex","role":"main","joined":true},
+                    {"participant":"main-old","provider":"codex","role":"main","joined":true}
+                ]},
+                "room_attempts": attempts
+            }),
+        };
+        let mut attempts = json!({"attempt-current":{
+            "attempt_id":"attempt-current", "provider":"codex", "tool":"panel-main",
+            "state":"working", "terminal":false,
+            "refs":{"panel_role":"main","panel_room_id":"room-current"}
+        }});
+        assert!(!key.matches(&snapshot(&attempts)), "unrecorded main counts");
+        attempts["main-old"] = old(false);
+        assert!(!key.matches(&snapshot(&attempts)), "live old main counts");
+        attempts["main-old"] = old(true);
+        assert!(
+            key.matches(&snapshot(&attempts)),
+            "released old main is ignored"
+        );
     }
 
     #[test]
